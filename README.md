@@ -13,13 +13,13 @@ This project is a complete from-scratch implementation of ResShift, a diffusion 
 
 ## Features
 
-- 🎯 **ResShift Implementation**: Complete from-scratch implementation of the ResShift paper
-- ⚡ **Efficient Diffusion**: Residual shifting mechanism reduces required diffusion steps
-- 🔄 **U-Net Architecture**: Encoder-decoder structure with skip connections
-- 🧠 **Swin Transformer**: Window-based attention mechanism in the bottleneck
-- ⏱️ **Time Conditioning**: Sinusoidal time embeddings for diffusion timesteps
-- 📊 **DIV2K Dataset**: Trained on DIV2K high-quality image dataset
-- 📈 **Comprehensive Evaluation**: Metrics include PSNR, SSIM, and LPIPS
+- **ResShift Implementation**: Complete from-scratch implementation of the ResShift paper
+- **Efficient Diffusion**: Residual shifting mechanism reduces required diffusion steps
+- **U-Net Architecture**: Encoder-decoder structure with skip connections
+- **Swin Transformer**: Window-based attention mechanism in the bottleneck
+- **Time Conditioning**: Sinusoidal time embeddings for diffusion timesteps
+- **DIV2K Dataset**: Trained on DIV2K high-quality image dataset
+- **Comprehensive Evaluation**: Metrics include PSNR, SSIM, and LPIPS
 
 ## Requirements
 
