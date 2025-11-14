@@ -453,7 +453,6 @@ def main():
     print(f"   1. Update config.py:")
     print(f"      - Set dir_HR = '{train_hr_patches_folder}'")
     print(f"      - Set dir_LR = '{train_lr_patches_folder}'")
-    print(f"      - Set use_patches = True")
     print(f"   2. The SRDataset will now:")
     print(f"      - Load pre-generated 256x256 HR patches")
     print(f"      - Load pre-generated 256x256 upsampled LR patches")

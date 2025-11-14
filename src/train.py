@@ -34,14 +34,8 @@ wandb.init(
 train_dl = DataLoader(mini_dataset, batch_size=batch_size, shuffle=True)
 
 hr, lr = next(iter(train_dl))
-# If using pre-generated patches, LR is already upsampled to 256x256
-# Otherwise, upsample LR from 64x64 to 256x256
-from config import use_patches
-if not use_patches:
-    upsample_layer = nn.Upsample(scale_factor=4, mode = 'nearest')
-    lr_upsampled = upsample_layer(lr)
-else:
-    lr_upsampled = lr  # Already 256x256
+# Pre-generated patches: LR is already upsampled to 256x256
+lr_upsampled = lr
 
 hr = hr.to(device)
 lr_upsampled = lr_upsampled.to(device)

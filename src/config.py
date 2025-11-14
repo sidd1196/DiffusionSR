@@ -15,6 +15,10 @@ patch_size = 256
 dir_HR = '/Users/akhilshekkari/Library/CloudStorage/GoogleDrive-shekkari@umd.edu/My Drive/train_HR_patches_256'
 dir_LR = '/Users/akhilshekkari/Library/CloudStorage/GoogleDrive-shekkari@umd.edu/My Drive/train_LR_patches_256'
 
+# Validation paths
+dir_valid_HR = '/Users/akhilshekkari/Library/CloudStorage/GoogleDrive-shekkari@umd.edu/My Drive/valid_HR_patches_256'
+dir_valid_LR = '/Users/akhilshekkari/Library/CloudStorage/GoogleDrive-shekkari@umd.edu/My Drive/valid_LR_patches_256'
+
 # noise control params
 T = 15
 eta_1 = 0.001
@@ -58,6 +62,3 @@ initial_conv_out_channels = 64
 ## training
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 batch_size = 1
-
-# Dataset mode: True if using pre-generated patches, False if using full images
-use_patches = True
