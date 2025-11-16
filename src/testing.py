@@ -53,7 +53,6 @@ for step in range(steps):
     model.train()
     # take random timestep
     t = torch.randint(0, 14, (batch_size,)).to(device)
-    #print(t.dtype, t.min().item(), t.max().item())
 
     # add the noise
     epsilon = torch.randn_like(hr)
