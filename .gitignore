@@ -16,3 +16,7 @@ pretrained_weights/
 
 # Environment files
 .env
+
+# macOS system files
+.DS_Store
+*.DS_Store
