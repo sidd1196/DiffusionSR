@@ -1,0 +1,23 @@
+Building FullUNET model...
+Loading VQGAN autoencoder...
+Loading VQGAN from: /Users/akhilshekkari/Desktop/DiffusionSR/pretrained_weights/autoencoder_vq_f4.pth
+Working with z of shape (1, 3, 64, 64) = 12288 dimensions.
+VQGAN loaded successfully on cpu
+✓ VQGAN autoencoder loaded
+
+✓ Model built successfully:
+  - Model: FullUNET
+  - Total parameters: 109.77M
+  - Trainable parameters: 109.77M
+  - Device: cpu
+  - Compiled: False
+  - Autoencoder: VQGAN (loaded)
+  ⚠ Warning: AMP requested but CUDA not available. Disabling AMP.
+✓ Setup optimization:
+  - Optimizer: Adam
+  - Learning rate: 5e-05
+  - Weight decay: 0
+  - AMP enabled: True (disabled)
+
+✓ Component 2 (build_model) implemented and tested!
+Please confirm if this looks good before moving to Component 3.

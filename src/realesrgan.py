@@ -3,27 +3,36 @@ import sys
 import glob
 import cv2
 import numpy as np
+import random
+import math
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import torch
-# Import Real-ESRGAN's actual degradation pipeline
-from basicsr.data.degradations import random_add_gaussian_noise_pt, random_add_poisson_noise_pt
-from basicsr.data.realesrgan_dataset import RealESRGANDataset
-from basicsr.utils import DiffJPEG, USMSharp
-from basicsr.utils.img_process_util import filter2D
-from basicsr.data.transforms import paired_random_crop
-from basicsr.data.degradations import random_mixed_kernels, random_add_gaussian_noise_pt, random_add_poisson_noise_pt
-from torch.nn import functional as F_torch
 
-# Apply compatibility patch (if needed)
+# Apply compatibility patch BEFORE importing basicsr
+# This fixes the issue where basicsr tries to import torchvision.transforms.functional_tensor
+# which doesn't exist in newer torchvision versions
 try:
     import torchvision.transforms.functional as F
     sys.modules['torchvision.transforms.functional_tensor'] = F
 except:
     pass
 
+# Import Real-ESRGAN's actual degradation pipeline
+from basicsr.data.degradations import (
+    random_add_gaussian_noise_pt, 
+    random_add_poisson_noise_pt,
+    random_mixed_kernels,
+    circular_lowpass_kernel
+)
+from basicsr.data.realesrgan_dataset import RealESRGANDataset
+from basicsr.utils import DiffJPEG, USMSharp
+from basicsr.utils.img_process_util import filter2D
+from basicsr.data.transforms import paired_random_crop
+from torch.nn import functional as F_torch
+
 class RealESRGANDegrader:
-    """Real-ESRGAN degradation pipeline for a SMOOTH BLUR"""
+    """Real-ESRGAN degradation pipeline matching original ResShift implementation"""
     
     def __init__(self, scale=4):
         self.scale = scale
@@ -31,33 +40,73 @@ class RealESRGANDegrader:
         # Initialize JPEG compression
         self.jpeger = DiffJPEG(differentiable=False)
         
-        # Blur settings (from Real-ESRGAN config)
-        self.blur_kernel_size = 21
-        self.kernel_list = ['iso', 'aniso', 'generalized_iso', 'generalized_aniso', 'plateau_iso', 'plateau_aniso']
-        self.kernel_prob = [0.45, 0.25, 0.12, 0.03, 0.12, 0.03]
+        # Import all parameters from config
+        from config import (
+            blur_kernel_size, kernel_list, kernel_prob,
+            data_train_blur_sigma as blur_sigma,
+            noise_range, poisson_scale_range, jpeg_range,
+            data_train_blur_sigma2 as blur_sigma2,
+            noise_range2, poisson_scale_range2, jpeg_range2,
+            second_order_prob, second_blur_prob, final_sinc_prob,
+            resize_prob, resize_range, resize_prob2, resize_range2,
+            gaussian_noise_prob, gray_noise_prob, gaussian_noise_prob2, gray_noise_prob2,
+            data_train_betag_range as betag_range,
+            data_train_betap_range as betap_range,
+            data_train_betag_range2 as betag_range2,
+            data_train_betap_range2 as betap_range2,
+            data_train_blur_kernel_size2 as blur_kernel_size2,
+            data_train_sinc_prob as sinc_prob,
+            data_train_sinc_prob2 as sinc_prob2
+        )
         
-        # --- Settings for "Smooth Blur" ---
-        self.blur_sigma = [2.0, 8.0]  # High blur
-        self.noise_range = [1, 5] # Low noise
-        self.poisson_scale_range = [0.05, 0.5] # Low noise
-        self.jpeg_range = [80, 95] # High quality (low artifact)
-
-        # --- THIS IS THE FIX ---
-        # Re-adding the missing attributes
-        self.betag_range = [0.5, 4]
-        self.betap_range = [1, 2]
-        # ----------------------
+        # Blur kernel settings
+        self.blur_kernel_size = blur_kernel_size
+        self.kernel_list = kernel_list
+        self.kernel_prob = kernel_prob
         
-        # --- Second degradation settings ---
-        self.second_blur_prob = 0.8
-        self.blur_kernel_size2 = 21
-        self.blur_sigma2 = [1.0, 5.0]  # High blur
-        self.noise_range2 = [1, 5] # Low noise
-        self.poisson_scale_range2 = [0.05, 0.5] # Low noise
-        self.jpeg_range2 = [80, 95] # High quality
+        # First degradation parameters
+        self.blur_sigma = blur_sigma
+        self.noise_range = noise_range
+        self.poisson_scale_range = poisson_scale_range
+        self.jpeg_range = jpeg_range
+        self.betag_range = betag_range
+        self.betap_range = betap_range
+        self.sinc_prob = sinc_prob
         
-        self.gaussian_noise_prob = 0.5
-        self.gray_noise_prob = 0.4
+        # Second degradation parameters
+        self.second_order_prob = second_order_prob
+        self.second_blur_prob = second_blur_prob
+        self.blur_kernel_size2 = blur_kernel_size2
+        self.blur_sigma2 = blur_sigma2
+        self.noise_range2 = noise_range2
+        self.poisson_scale_range2 = poisson_scale_range2
+        self.jpeg_range2 = jpeg_range2
+        self.betag_range2 = betag_range2
+        self.betap_range2 = betap_range2
+        self.sinc_prob2 = sinc_prob2
+        
+        # Final sinc filter
+        self.final_sinc_prob = final_sinc_prob
+        
+        # Resize parameters
+        self.resize_prob = resize_prob
+        self.resize_range = resize_range
+        self.resize_prob2 = resize_prob2
+        self.resize_range2 = resize_range2
+        
+        # Noise probabilities
+        self.gaussian_noise_prob = gaussian_noise_prob
+        self.gray_noise_prob = gray_noise_prob
+        self.gaussian_noise_prob2 = gaussian_noise_prob2
+        self.gray_noise_prob2 = gray_noise_prob2
+        
+        # Kernel ranges for sinc filter generation
+        self.kernel_range1 = [x for x in range(3, self.blur_kernel_size, 2)]
+        self.kernel_range2 = [x for x in range(3, self.blur_kernel_size2, 2)]
+        
+        # Pulse tensor (identity kernel) for final sinc filter
+        self.pulse_tensor = torch.zeros(self.blur_kernel_size2, self.blur_kernel_size2).float()
+        self.pulse_tensor[self.blur_kernel_size2//2, self.blur_kernel_size2//2] = 1
     
     def degrade(self, img_gt):
         """
@@ -93,23 +142,27 @@ class RealESRGANDegrader:
             kernel = torch.FloatTensor(kernel).to(device)
         img_lq = filter2D(img_gt, kernel)
         
-        # 2. DOWNSAMPLING (Part 1: Random Resize)
-        updown_type = np.random.choice(['up', 'down', 'keep'], p=[0.2, 0.7, 0.1])
+        # 2. RANDOM RESIZE (First degradation)
+        updown_type = random.choices(['up', 'down', 'keep'], weights=self.resize_prob)[0]
         if updown_type == 'up':
-            scale_factor = np.random.uniform(1, 1.5)
+            scale_factor = random.uniform(1, self.resize_range[1])
         elif updown_type == 'down':
-            scale_factor = np.random.uniform(0.5, 1)
+            scale_factor = random.uniform(self.resize_range[0], 1)
         else:
             scale_factor = 1
         
         if scale_factor != 1:
-            img_lq = F_torch.interpolate(img_lq, scale_factor=scale_factor, mode='bilinear')
+            mode = random.choice(['area', 'bilinear', 'bicubic'])
+            img_lq = F_torch.interpolate(img_lq, scale_factor=scale_factor, mode=mode)
         
-        # 3. NOISE
-        # Adds either Gaussian or Poisson noise
-        if np.random.uniform() < self.gaussian_noise_prob:
+        # 3. NOISE (First degradation)
+        if random.random() < self.gaussian_noise_prob:
             img_lq = random_add_gaussian_noise_pt(
-                img_lq, sigma_range=self.noise_range, clip=True, rounds=False, gray_prob=self.gray_noise_prob # <-- Uses new [1.0, 5.0] range
+                img_lq, 
+                sigma_range=self.noise_range, 
+                clip=True, 
+                rounds=False, 
+                gray_prob=self.gray_noise_prob
             )
         else:
             img_lq = random_add_poisson_noise_pt(
@@ -120,75 +173,125 @@ class RealESRGANDegrader:
                 rounds=False
             )
         
-        # 4. JPEG COMPRESSION
-        # Applies JPEG compression artifacts
-        jpeg_p = img_lq.new_zeros(img_lq.size(0)).uniform_(*self.jpeg_range) # <-- Uses new [80, 95] range
+        # 4. JPEG COMPRESSION (First degradation)
+        jpeg_p = img_lq.new_zeros(img_lq.size(0)).uniform_(*self.jpeg_range)
         img_lq = torch.clamp(img_lq, 0, 1)
-        # Move to CPU for JPEG compression (DiffJPEG works better on CPU)
         original_device = img_lq.device
         img_lq = self.jpeger(img_lq.cpu(), quality=jpeg_p).to(original_device)
         
-        # ----------------------- The second degradation process ----------------------- #
+        # ----------------------- The second degradation process (50% probability) ----------------------- #
         
-        # 1. BLUR (Second Pass)
-        if np.random.uniform() < self.second_blur_prob:
-            kernel = random_mixed_kernels(
-                self.kernel_list,
-                self.kernel_prob,
-                self.blur_kernel_size2,
-                self.blur_sigma2, # <-- Uses new [1.0, 5.0] range
-                self.blur_sigma2,
-                [-np.pi, np.pi],
-                self.betag_range, # <-- This will now work
-                self.betap_range, # <-- This will now work
-                noise_range=None
-            )
-            if isinstance(kernel, np.ndarray):
-                kernel = torch.FloatTensor(kernel).to(device)
-            img_lq = filter2D(img_lq, kernel)
+        if random.random() < self.second_order_prob:
+            # 1. BLUR (Second Pass)
+            if random.random() < self.second_blur_prob:
+                # Generate second kernel
+                kernel_size2 = random.choice(self.kernel_range2)
+                if random.random() < self.sinc_prob2:
+                    # Sinc kernel for second degradation
+                    if kernel_size2 < 13:
+                        omega_c = random.uniform(math.pi / 3, math.pi)
+                    else:
+                        omega_c = random.uniform(math.pi / 5, math.pi)
+                    kernel2 = circular_lowpass_kernel(omega_c, kernel_size2, pad_to=False)
+                else:
+                    kernel2 = random_mixed_kernels(
+                        self.kernel_list,
+                        self.kernel_prob,
+                        kernel_size2,
+                        self.blur_sigma2,
+                        self.blur_sigma2,
+                        [-math.pi, math.pi],
+                        self.betag_range2,
+                        self.betap_range2,
+                        noise_range=None
+                    )
+                # Pad kernel
+                pad_size = (self.blur_kernel_size2 - kernel_size2) // 2
+                kernel2 = np.pad(kernel2, ((pad_size, pad_size), (pad_size, pad_size)))
+                if isinstance(kernel2, np.ndarray):
+                    kernel2 = torch.FloatTensor(kernel2).to(device)
+                img_lq = filter2D(img_lq, kernel2)
+            
+            # 2. RANDOM RESIZE (Second degradation)
+            updown_type = random.choices(['up', 'down', 'keep'], weights=self.resize_prob2)[0]
+            if updown_type == 'up':
+                scale_factor = random.uniform(1, self.resize_range2[1])
+            elif updown_type == 'down':
+                scale_factor = random.uniform(self.resize_range2[0], 1)
+            else:
+                scale_factor = 1
+            
+            if scale_factor != 1:
+                mode = random.choice(['area', 'bilinear', 'bicubic'])
+                img_lq = F_torch.interpolate(
+                    img_lq,
+                    size=(int(ori_h / self.scale * scale_factor), int(ori_w / self.scale * scale_factor)),
+                    mode=mode
+                )
+            
+            # 3. NOISE (Second Pass)
+            if random.random() < self.gaussian_noise_prob2:
+                img_lq = random_add_gaussian_noise_pt(
+                    img_lq, 
+                    sigma_range=self.noise_range2, 
+                    clip=True, 
+                    rounds=False, 
+                    gray_prob=self.gray_noise_prob2
+                )
+            else:
+                img_lq = random_add_poisson_noise_pt(
+                    img_lq,
+                    scale_range=self.poisson_scale_range2,
+                    gray_prob=self.gray_noise_prob2,
+                    clip=True,
+                    rounds=False
+                )
         
-        # 2. DOWNSAMPLING (Part 2: Random Resize)
-        updown_type = np.random.choice(['up', 'down', 'keep'], p=[0.3, 0.4, 0.3])
-        if updown_type == 'up':
-            scale_factor = np.random.uniform(1, 1.2)
-        elif updown_type == 'down':
-            scale_factor = np.random.uniform(0.5, 1)
+        # ----------------------- Final stage: Resize back + Sinc filter + JPEG ----------------------- #
+        
+        # Generate final sinc kernel
+        if random.random() < self.final_sinc_prob:
+            kernel_size = random.choice(self.kernel_range2)
+            omega_c = random.uniform(math.pi / 3, math.pi)
+            sinc_kernel = circular_lowpass_kernel(omega_c, kernel_size, pad_to=self.blur_kernel_size2)
+            sinc_kernel = torch.FloatTensor(sinc_kernel).to(device)
         else:
-            scale_factor = 1
+            sinc_kernel = self.pulse_tensor.to(device)  # Identity (no sinc filter)
         
-        if scale_factor != 1:
-            img_lq = F_torch.interpolate(img_lq, scale_factor=scale_factor, mode='bilinear')
-        
-        # 3. NOISE (Second Pass)
-        if np.random.uniform() < self.gaussian_noise_prob:
-            img_lq = random_add_gaussian_noise_pt(
-                img_lq, sigma_range=self.noise_range2, clip=True, rounds=False, gray_prob=self.gray_noise_prob # <-- Uses new [1.0, 5.0] range
-            )
-        else:
-            img_lq = random_add_poisson_noise_pt(
+        # Randomize order: [resize + sinc] + JPEG vs JPEG + [resize + sinc]
+        if random.random() < 0.5:
+            # Order 1: Resize back + sinc filter, then JPEG
+            mode = random.choice(['area', 'bilinear', 'bicubic'])
+            img_lq = F_torch.interpolate(
                 img_lq,
-                scale_range=self.poisson_scale_range2,
-                gray_prob=self.gray_noise_prob,
-                clip=True,
-                rounds=False
+                size=(ori_h // self.scale, ori_w // self.scale),
+                mode=mode
             )
+            img_lq = filter2D(img_lq, sinc_kernel)
+            # JPEG compression
+            jpeg_p = img_lq.new_zeros(img_lq.size(0)).uniform_(*self.jpeg_range2)
+            img_lq = torch.clamp(img_lq, 0, 1)
+            original_device = img_lq.device
+            img_lq = self.jpeger(img_lq.cpu(), quality=jpeg_p).to(original_device)
+        else:
+            # Order 2: JPEG compression, then resize back + sinc filter
+            jpeg_p = img_lq.new_zeros(img_lq.size(0)).uniform_(*self.jpeg_range2)
+            img_lq = torch.clamp(img_lq, 0, 1)
+            original_device = img_lq.device
+            img_lq = self.jpeger(img_lq.cpu(), quality=jpeg_p).to(original_device)
+            # Resize back + sinc filter
+            mode = random.choice(['area', 'bilinear', 'bicubic'])
+            img_lq = F_torch.interpolate(
+                img_lq,
+                size=(ori_h // self.scale, ori_w // self.scale),
+                mode=mode
+            )
+            img_lq = filter2D(img_lq, sinc_kernel)
         
-        # 2. DOWNSAMPLING (Part 3: Final Resize)
-        # This is the main downsampling step to the target 4x scale factor.
-        # We use 'bilinear' or 'bicubic' to keep it smooth, as you requested.
-        mode = np.random.choice(['bilinear', 'bicubic'])
-        img_lq = F_torch.interpolate(
-            img_lq, size=(ori_h // self.scale, ori_w // self.scale), mode=mode
-        )
+        # Clamp and round (final step)
+        img_lq = torch.clamp((img_lq * 255.0).round(), 0, 255) / 255.0
         
-        # 4. JPEG COMPRESSION (Second Pass)
-        jpeg_p = img_lq.new_zeros(img_lq.size(0)).uniform_(*self.jpeg_range2) # <-- Uses new [80, 95] range
-        img_lq = torch.clamp(img_lq, 0, 1)
-        # Move to CPU for JPEG compression (DiffJPEG works better on CPU)
-        original_device = img_lq.device
-        img_lq = self.jpeger(img_lq.cpu(), quality=jpeg_p).to(original_device)
-        
-        return img_lq.squeeze(0) # Squeeze batch dim
+        return img_lq.squeeze(0)  # Squeeze batch dim
 
 
 def process_dataset(hr_folder, output_base_dir, dataset_name, scale=4, patch_size=256, device='cpu'):
