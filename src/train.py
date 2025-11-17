@@ -4,6 +4,17 @@ Main training script for ResShift diffusion model.
 This script initializes the Trainer class and runs the main training loop.
 """
 
+import multiprocessing
+# Fix CUDA multiprocessing: Set start method to 'spawn' for compatibility with CUDA
+# This is required when using DataLoader with num_workers > 0 on systems where
+# CUDA is initialized before worker processes are created (Colab, some Linux setups)
+# Must be set before any CUDA initialization or DataLoader creation
+try:
+    multiprocessing.set_start_method('spawn', force=True)
+except RuntimeError:
+    # Start method already set (e.g., in another module), ignore
+    pass
+
 from trainer import Trainer
 from config import (
     iterations, batch_size, microbatch, learning_rate,
