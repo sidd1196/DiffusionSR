@@ -1,6 +1,0 @@
-Loading VQGAN from: /Users/akhilshekkari/Desktop/DiffusionSR/pretrained_weights/autoencoder_vq_f4.pth
-Working with z of shape (1, 3, 64, 64) = 12288 dimensions.
-VQGAN loaded successfully on cpu
-loss at step 1 is 1.0994929075241089
-loss at step 2 is 1.1443036794662476
-loss at step 3 is 1.044960856437683

@@ -26,20 +26,20 @@ learning_rate = lr  # Alias for backward compatibility
 warmup_iterations = 5000
 
 # Dataloader
-batch = [2, 1]  # Original ResShift: adjust based on your GPU memory
+batch = [32, 1]  # Original ResShift: adjust based on your GPU memory
 batch_size = batch[0]  # Use first value from batch list
-microbatch = 8
+microbatch = 100
 num_workers = 4
 prefetch_factor = 2
 
 # Optimization settings
 weight_decay = 0
 ema_rate = 0.999
-iterations = 3 # ~15 epochs for your dataset size
+iterations = 100 # ~15 epochs for your dataset size
 
 # Save logging
-save_freq = 10000
-log_freq = [200, 2000, 1]  # [training loss, training images, val images]
+save_freq = 5
+log_freq = [5, 5, 1]  # [training loss, training images, val images]
 local_logging = True
 tf_logging = False
 
@@ -56,7 +56,7 @@ seed = 123456
 global_seeding = False
 
 # Model compile
-compile_flag = False
+compile_flag = True
 compile_mode = "reduce-overhead"
 
 # ============================================================================

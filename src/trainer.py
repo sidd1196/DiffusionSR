@@ -14,7 +14,7 @@ from config import (
     use_amp, lr, lr_min, lr_schedule, warmup_iterations,
     compile_flag, compile_mode, batch, prefetch_factor, microbatch,
     save_freq, log_freq, val_freq, val_y_channel, ema_rate, use_ema_val,
-    seed, global_seeding
+    seed, global_seeding, normalize_input, latent_flag
 )
 import wandb
 import os
@@ -365,6 +365,31 @@ class Trainer:
         
         return loss
     
+    def _scale_input(self, x_t, t):
+        """
+        Scale input based on timestep for training stability.
+        Matches original GaussianDiffusion._scale_input for latent space.
+        
+        For latent space: std = sqrt(etas[t] * kappa^2 + 1)
+        This normalizes the input variance across different timesteps.
+        
+        Args:
+            x_t: Noisy input tensor (B, C, H, W)
+            t: Timestep tensor (B,)
+        
+        Returns:
+            x_t_scaled: Scaled input tensor (B, C, H, W)
+        """
+        if normalize_input and latent_flag:
+            # For latent space: std = sqrt(etas[t] * kappa^2 + 1)
+            # Extract eta_t for each sample in batch
+            eta_t = self.eta[t]  # (B, 1, 1, 1)
+            std = torch.sqrt(eta_t * k**2 + 1)
+            x_t_scaled = x_t / std
+        else:
+            x_t_scaled = x_t
+        return x_t_scaled
+    
     def training_step(self, hr_latent, lr_latent):
         """
         Component 5: Main training step with micro-batching and gradient accumulation.
@@ -413,9 +438,11 @@ class Trainer:
             forward_start = time.time()
             context = torch.cuda.amp.autocast if (use_amp and torch.cuda.is_available()) else nullcontext
             with context():
+                # Scale input for training stability (normalize variance across timesteps)
+                x_t_scaled = self._scale_input(x_t, t)
                 # Forward pass: Model predicts x0 (clean HR latent), not noise
                 # ResShift uses predict_type = "xstart"
-                x0_pred = self.model(x_t, t, lq=lr_micro)
+                x0_pred = self.model(x_t_scaled, t, lq=lr_micro)
                 # Loss: Compare predicted x0 with ground truth HR latent
                 loss = self.criterion(x0_pred, hr_micro)
             forward_time += time.time() - forward_start
@@ -792,9 +819,11 @@ class Trainer:
                 for t_step in range(T - 1, -1, -1):  # T-1, T-2, ..., 1, 0
                     t = torch.full((hr_latent.shape[0],), t_step, device=self.device, dtype=torch.long)
                     
+                    # Scale input for training stability (normalize variance across timesteps)
+                    x_t_scaled = self._scale_input(x_t, t)
                     # Predict x0 from current noisy state x_t
                     forward_start = time.time()
-                    x0_pred = val_model(x_t, t, lq=lr_latent)
+                    x0_pred = val_model(x_t_scaled, t, lq=lr_latent)
                     sampling_forward_time += time.time() - forward_start
                     
                     # If not the last step, compute x_{t-1} from predicted x0

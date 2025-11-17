@@ -9,6 +9,10 @@ wheels/
 # Virtual environments
 .venv
 data
-pretrained_weights
-/Users/akhilshekkari/Desktop/DiffusionSR/pretrained_weights/autoencoder_vq_f4.pth
+pretrained_weights/
+*.tmp
+.tmp/
+.tmp.*
+
+# Environment files
 .env
