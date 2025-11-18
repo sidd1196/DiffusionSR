@@ -38,14 +38,14 @@ ema_rate = 0.999
 iterations = 800  # 64 epochs for DIV2K (800 images / 64 batch_size = 12.5 batches per epoch)
 
 # Save logging
-save_freq = 100
+save_freq = 200
 log_freq = [50, 100]  # [training loss, training images]
 local_logging = True
 tf_logging = False
 
 # Validation settings
 use_ema_val = True
-val_freq = save_freq
+val_freq = 100  # Run validation every 100 iterations
 val_y_channel = True
 val_resolution = 64  # model.params.lq_size
 val_padding_mode = "reflect"

@@ -107,32 +107,44 @@ def train(resume_ckpt=None):
         if 'val' in trainer.dataloaders and trainer.current_iters % val_freq == 0:
             trainer.validation()
         
-        # Prepare data for logging (need x_t and pred for visualization)
-        # Recompute for logging (or store in training_step - for now, recompute)
-        with torch.no_grad():
-            residual = (lr_latent - hr_latent)
-            t_log = torch.randint(0, T, (hr_latent.shape[0],)).to(trainer.device)
-            epsilon_log = torch.randn_like(hr_latent)
-            eta_t_log = trainer.eta[t_log]
-            x_t_log = hr_latent + eta_t_log * residual + k * torch.sqrt(eta_t_log) * epsilon_log
-            
-            trainer.model.eval()
-            # Model predicts x0 (clean HR latent), not noise
-            x0_pred_log = trainer.model(x_t_log[0:1], t_log[0:1], lq=lr_latent[0:1])
-            trainer.model.train()
-        
         # Store timing info for logging
         trainer._last_timing = timing_dict
         
-        # Log training metrics and images (Component 8)
-        trainer.log_step_train(
-            loss=loss,
-            hr_latent=hr_latent[0:1],
-            lr_latent=lr_latent[0:1],
-            x_t=x_t_log[0:1],
-            pred=x0_pred_log,  # x0 prediction (clean HR latent)
-            phase='train'
-        )
+        # Only recompute for logging if we're actually logging images
+        # This avoids unnecessary computation when only logging loss
+        if trainer.current_iters % log_freq[1] == 0:
+            # Prepare data for logging (need x_t and pred for visualization)
+            with torch.no_grad():
+                residual = (lr_latent - hr_latent)
+                t_log = torch.randint(0, T, (hr_latent.shape[0],)).to(trainer.device)
+                epsilon_log = torch.randn_like(hr_latent)
+                eta_t_log = trainer.eta[t_log]
+                x_t_log = hr_latent + eta_t_log * residual + k * torch.sqrt(eta_t_log) * epsilon_log
+                
+                trainer.model.eval()
+                # Model predicts x0 (clean HR latent), not noise
+                x0_pred_log = trainer.model(x_t_log[0:1], t_log[0:1], lq=lr_latent[0:1])
+                trainer.model.train()
+            
+            # Log training metrics and images (Component 8)
+            trainer.log_step_train(
+                loss=loss,
+                hr_latent=hr_latent[0:1],
+                lr_latent=lr_latent[0:1],
+                x_t=x_t_log[0:1],
+                pred=x0_pred_log,  # x0 prediction (clean HR latent)
+                phase='train'
+            )
+        else:
+            # Only log loss/metrics, no images
+            trainer.log_step_train(
+                loss=loss,
+                hr_latent=hr_latent[0:1],
+                lr_latent=lr_latent[0:1],
+                x_t=None,  # Not needed when not logging images
+                pred=None,  # Not needed when not logging images
+                phase='train'
+            )
         
         # Save checkpoint (Component 7)
         if trainer.current_iters % save_freq == 0:

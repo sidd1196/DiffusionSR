@@ -713,8 +713,8 @@ class Trainer:
             print(f"Train: {self.current_iters:06d}/{iterations:06d}, "
                   f"Loss: {loss:.6f}, LR: {current_lr:.2e}{timing_str}")
         
-        # Log images at log_freq[1] intervals
-        if self.current_iters % log_freq[1] == 0:
+        # Log images at log_freq[1] intervals (only if x_t and pred are provided)
+        if self.current_iters % log_freq[1] == 0 and x_t is not None and pred is not None:
             with torch.no_grad():
                 # Decode latents to pixel space for visualization
                 # Take first sample from batch
