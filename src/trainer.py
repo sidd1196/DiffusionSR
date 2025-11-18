@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.cuda.amp as amp
 import random
 import numpy as np
 from model import FullUNET
@@ -436,8 +435,11 @@ class Trainer:
             
             # Forward pass with autocast if AMP is enabled
             forward_start = time.time()
-            context = torch.cuda.amp.autocast if (use_amp and torch.cuda.is_available()) else nullcontext
-            with context():
+            if use_amp and torch.cuda.is_available():
+                context = torch.amp.autocast('cuda')
+            else:
+                context = nullcontext()
+            with context:
                 # Scale input for training stability (normalize variance across timesteps)
                 x_t_scaled = self._scale_input(x_t, t)
                 # Forward pass: Model predicts x0 (clean HR latent), not noise
