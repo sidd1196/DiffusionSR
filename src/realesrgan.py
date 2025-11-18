@@ -177,7 +177,7 @@ class RealESRGANDegrader:
         jpeg_p = img_lq.new_zeros(img_lq.size(0)).uniform_(*self.jpeg_range)
         img_lq = torch.clamp(img_lq, 0, 1)
         original_device = img_lq.device
-        img_lq = self.jpeger(img_lq.cpu(), quality=jpeg_p).to(original_device)
+        img_lq = self.jpeger(img_lq.cpu(), quality=jpeg_p.cpu()).to(original_device)
         
         # ----------------------- The second degradation process (50% probability) ----------------------- #
         
@@ -272,13 +272,13 @@ class RealESRGANDegrader:
             jpeg_p = img_lq.new_zeros(img_lq.size(0)).uniform_(*self.jpeg_range2)
             img_lq = torch.clamp(img_lq, 0, 1)
             original_device = img_lq.device
-            img_lq = self.jpeger(img_lq.cpu(), quality=jpeg_p).to(original_device)
+            img_lq = self.jpeger(img_lq.cpu(), quality=jpeg_p.cpu()).to(original_device)
         else:
             # Order 2: JPEG compression, then resize back + sinc filter
             jpeg_p = img_lq.new_zeros(img_lq.size(0)).uniform_(*self.jpeg_range2)
             img_lq = torch.clamp(img_lq, 0, 1)
             original_device = img_lq.device
-            img_lq = self.jpeger(img_lq.cpu(), quality=jpeg_p).to(original_device)
+            img_lq = self.jpeger(img_lq.cpu(), quality=jpeg_p.cpu()).to(original_device)
             # Resize back + sinc filter
             mode = random.choice(['area', 'bilinear', 'bicubic'])
             img_lq = F_torch.interpolate(
