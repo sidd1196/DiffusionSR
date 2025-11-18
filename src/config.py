@@ -23,10 +23,10 @@ lr = 5e-5  # Original ResShift setting
 lr_min = 2e-5
 lr_schedule = None
 learning_rate = lr  # Alias for backward compatibility
-warmup_iterations = 5000
+warmup_iterations = 100  # ~12.5% of total iterations (800), linear warmup from 0 to base_lr
 
 # Dataloader
-batch = [32, 1]  # Original ResShift: adjust based on your GPU memory
+batch = [64, 64]  # Original ResShift: adjust based on your GPU memory
 batch_size = batch[0]  # Use first value from batch list
 microbatch = 100
 num_workers = 4
@@ -35,11 +35,11 @@ prefetch_factor = 2
 # Optimization settings
 weight_decay = 0
 ema_rate = 0.999
-iterations = 100 # ~15 epochs for your dataset size
+iterations = 800  # 64 epochs for DIV2K (800 images / 64 batch_size = 12.5 batches per epoch)
 
 # Save logging
-save_freq = 5
-log_freq = [5, 5, 1]  # [training loss, training images, val images]
+save_freq = 100
+log_freq = [50, 100]  # [training loss, training images]
 local_logging = True
 tf_logging = False
 

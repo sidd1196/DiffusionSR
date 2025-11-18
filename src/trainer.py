@@ -789,6 +789,7 @@ class Trainer:
         total_psnr = 0.0
         total_ssim = 0.0
         total_lpips = 0.0
+        total_val_loss = 0.0
         num_samples = 0
         
         total_sampling_time = 0.0
@@ -850,6 +851,10 @@ class Trainer:
                 # Final prediction after full sampling loop
                 x0_final = x_t
                 
+                # Compute validation loss (MSE in latent space, same as training loss)
+                val_loss = self.criterion(x0_final, hr_latent).item()
+                total_val_loss += val_loss * hr_latent.shape[0]
+                
                 sampling_time = time.time() - sampling_start
                 total_sampling_time += sampling_time
                 total_forward_time += sampling_forward_time
@@ -908,6 +913,7 @@ class Trainer:
             mean_psnr = total_psnr / num_samples
             mean_ssim = total_ssim / num_samples
             mean_lpips = total_lpips / num_samples
+            mean_val_loss = total_val_loss / num_samples
             
             avg_sampling_time = total_sampling_time / num_batches
             avg_forward_time = total_forward_time / num_batches
@@ -916,6 +922,7 @@ class Trainer:
             avg_batch_time = val_total_time / num_batches
             
             print(f"\nValidation Metrics:")
+            print(f"  - Loss: {mean_val_loss:.6f}")
             print(f"  - PSNR: {mean_psnr:.2f} dB")
             print(f"  - SSIM: {mean_ssim:.4f}")
             print(f"  - LPIPS: {mean_lpips:.4f}")
@@ -927,6 +934,7 @@ class Trainer:
             print(f"  - Avg batch time: {avg_batch_time:.3f}s/batch")
             
             wandb.log({
+                'val/loss': mean_val_loss,
                 'val/psnr': mean_psnr,
                 'val/ssim': mean_ssim,
                 'val/lpips': mean_lpips,
